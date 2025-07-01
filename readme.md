@@ -26,4 +26,122 @@ also if you want to use dotnet cli, you need to install .NET 8+ SDK.
    dotnet build MS-SQL-Image_convert.csproj --configuration Release
    ```
 
+## Functions Available
+
+### 1. ConvertToJpg
+Converts any image format to JPEG with customizable quality.
+```sql
+dbo.ConvertToJpg(@imageData VARBINARY(MAX), @quality INT = 85) RETURNS VARBINARY(MAX)
+```
+- `@imageData`: The source image binary data
+- `@quality`: JPEG quality (1-100, default: 85)
+
+### 2. ConvertToPng
+Converts any image format to PNG.
+```sql
+dbo.ConvertToPng(@imageData VARBINARY(MAX)) RETURNS VARBINARY(MAX)
+```
+- `@imageData`: The source image binary data
+
+### 3. ResizeImage
+Resizes an image to specified dimensions with optional aspect ratio preservation.
+```sql
+dbo.ResizeImage(@imageData VARBINARY(MAX), @width INT, @height INT, @maintainAspectRatio BIT = 1) RETURNS VARBINARY(MAX)
+```
+- `@imageData`: The source image binary data
+- `@width`: Target width in pixels
+- `@height`: Target height in pixels
+- `@maintainAspectRatio`: 1 to maintain aspect ratio, 0 to stretch (default: 1)
+
+### 4. ReduceImageSize
+Reduces image file size by applying compression and optionally resizing.
+```sql
+dbo.ReduceImageSize(@imageData VARBINARY(MAX), @maxSizeKB INT = 100, @jpegQuality INT = 85) RETURNS VARBINARY(MAX)
+```
+- `@imageData`: The source image binary data
+- `@maxSizeKB`: Maximum output size in KB (default: 100)
+- `@jpegQuality`: JPEG compression quality (1-100, default: 85)
+
+### 5. EncryptImage
+Encrypts image data using AES-256 encryption.
+```sql
+dbo.EncryptImage(@imageData VARBINARY(MAX), @password NVARCHAR(MAX)) RETURNS VARBINARY(MAX)
+```
+- `@imageData`: The image to encrypt
+- `@password`: Encryption password
+
+### 6. DecryptImage
+Decrypts previously encrypted image data.
+```sql
+dbo.DecryptImage(@encryptedData VARBINARY(MAX), @password NVARCHAR(MAX)) RETURNS VARBINARY(MAX)
+```
+- `@encryptedData`: The encrypted image data
+- `@password`: Decryption password (must match encryption password)
+
+### 7. GetImageInfo
+Returns detailed information about an image.
+```sql
+dbo.GetImageInfo(@imageData VARBINARY(MAX)) RETURNS NVARCHAR(MAX)
+```
+- `@imageData`: The image to analyze
+- Returns: Format, dimensions, size, resolution, and pixel format
+
+## Installation
+
+1. Build the project to generate the DLL
+2. Copy the DLL to your SQL Server
+3. Run the deployment script (deploy.sql) on your database
+4. Ensure CLR is enabled and database is set to TRUSTWORTHY
+
+## Usage Examples
+
+### Convert PNG to JPG
+```sql
+UPDATE MyImages
+SET ImageData = dbo.ConvertToJpg(ImageData, 90)
+WHERE ImageFormat = 'PNG';
+```
+
+### Create thumbnails
+```sql
+SELECT 
+    ImageId,
+    dbo.ResizeImage(FullImage, 150, 150, 1) AS Thumbnail
+FROM ProductImages;
+```
+
+### Encrypt sensitive images
+```sql
+UPDATE SensitiveDocuments
+SET ImageData = dbo.EncryptImage(ImageData, 'StrongPassword123!');
+```
+
+### Reduce storage size
+```sql
+UPDATE LargeImages
+SET ImageData = dbo.ReduceImageSize(ImageData, 500, 80)
+WHERE DATALENGTH(ImageData) > 1024 * 1024; -- Images larger than 1MB
+```
+
+## Security Considerations
+
+- The assembly requires UNSAFE permission due to System.Drawing usage
+- Store encryption passwords securely, not in plain text
+- Consider using SQL Server's built-in encryption for password storage
+- Test thoroughly in a non-production environment first
+
+## Performance Tips
+
+- Process images in batches during off-peak hours
+- Consider creating a separate filegroup for image data
+- Monitor tempdb usage during large batch operations
+- Use appropriate indexes on tables containing images
+
+## Troubleshooting
+
+- If you get "Assembly not found" errors, ensure the DLL path is correct
+- For "Permission denied" errors, check TRUSTWORTHY setting and CLR permissions
+- For out of memory errors, process images in smaller batches
+- Check SQL Server error log for detailed CLR error messages
+
 
