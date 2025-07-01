@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net481</TargetFrameworks>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <RootNamespace>MS-SQL-Image_convert</RootNamespace>
+    <AssemblyName>MS-SQL-Image_convert</AssemblyName>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>MS-SQL-Image_convert.snk</AssemblyOriginatorKeyFile>
+    <OutputType>Library</OutputType>
+    <CLSCompliant>true</CLSCompliant>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DelaySign>false</DelaySign>
+    <IsTestProject>true</IsTestProject>
+    <ExcludeTests Condition="'$(Configuration)'=='Release'">true</ExcludeTests>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release' and '$(ExcludeTests)'=='true'">
+    <DefineConstants>TRACE;RELEASE;RELEASE_WITHOUT_TESTS</DefineConstants>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SqlServer.Server"/>
+  </ItemGroup>
+
+</Project> 
