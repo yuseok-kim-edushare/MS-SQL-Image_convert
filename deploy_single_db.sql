@@ -5,6 +5,7 @@
 -- =============================================
 -- CONFIGURATION - CHANGE THESE VALUES
 -- =============================================
+use db1
 DECLARE @target_db NVARCHAR(128) = N'db1';  -- <<<< CHANGE THIS FOR EACH DATABASE
 DECLARE @dll_path NVARCHAR(260) = N'C:\CLR\MS-SQL-Image_convert.dll';  -- <<<< SET YOUR PATH HERE
 DECLARE @system_drawing_path NVARCHAR(260) = N'C:\Windows\Microsoft.NET\assembly\GAC_MSIL\System.Drawing\v4.0_4.0.0.0__b03f5f7f11d50a3a\System.Drawing.dll';
@@ -20,7 +21,6 @@ RECONFIGURE;
 -- =============================================
 -- Trust assemblies (run once per instance)
 -- =============================================
-USE [master];
 
 -- Trust MS-SQL-Image_convert assembly
 DECLARE @hash VARBINARY(64);
@@ -64,13 +64,13 @@ PRINT 'Deploying to database: ' + @target_db;
 -- =============================================
 
 -- Drop existing functions
-IF OBJECT_ID('dbo.ConvertToJpg', 'FN') IS NOT NULL DROP FUNCTION dbo.ConvertToJpg;
-IF OBJECT_ID('dbo.ConvertToPng', 'FN') IS NOT NULL DROP FUNCTION dbo.ConvertToPng;
-IF OBJECT_ID('dbo.ResizeImage', 'FN') IS NOT NULL DROP FUNCTION dbo.ResizeImage;
-IF OBJECT_ID('dbo.ReduceImageSize', 'FN') IS NOT NULL DROP FUNCTION dbo.ReduceImageSize;
-IF OBJECT_ID('dbo.EncryptImage', 'FN') IS NOT NULL DROP FUNCTION dbo.EncryptImage;
-IF OBJECT_ID('dbo.DecryptImage', 'FN') IS NOT NULL DROP FUNCTION dbo.DecryptImage;
-IF OBJECT_ID('dbo.GetImageInfo', 'FN') IS NOT NULL DROP FUNCTION dbo.GetImageInfo;
+IF OBJECT_ID('dbo.ConvertToJpg') IS NOT NULL DROP FUNCTION dbo.ConvertToJpg;
+IF OBJECT_ID('dbo.ConvertToPng') IS NOT NULL DROP FUNCTION dbo.ConvertToPng;
+IF OBJECT_ID('dbo.ResizeImage') IS NOT NULL DROP FUNCTION dbo.ResizeImage;
+IF OBJECT_ID('dbo.ReduceImageSize') IS NOT NULL DROP FUNCTION dbo.ReduceImageSize;
+IF OBJECT_ID('dbo.EncryptImage') IS NOT NULL DROP FUNCTION dbo.EncryptImage;
+IF OBJECT_ID('dbo.DecryptImage') IS NOT NULL DROP FUNCTION dbo.DecryptImage;
+IF OBJECT_ID('dbo.GetImageInfo') IS NOT NULL DROP FUNCTION dbo.GetImageInfo;
 
 PRINT 'Dropped existing functions';
 
@@ -120,7 +120,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Conv
 GO
 
 PRINT 'ConvertToJpg created';
-
+Go
 -- ConvertToPng
 CREATE FUNCTION dbo.ConvertToPng 
 (
@@ -131,7 +131,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Conv
 GO
 
 PRINT 'ConvertToPng created';
-
+GO
 -- ResizeImage
 CREATE FUNCTION dbo.ResizeImage 
 (
@@ -145,7 +145,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Resi
 GO
 
 PRINT 'ResizeImage created';
-
+GO
 -- ReduceImageSize
 CREATE FUNCTION dbo.ReduceImageSize 
 (
@@ -158,7 +158,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Redu
 GO
 
 PRINT 'ReduceImageSize created';
-
+GO
 -- EncryptImage
 CREATE FUNCTION dbo.EncryptImage 
 (
@@ -170,7 +170,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Encr
 GO
 
 PRINT 'EncryptImage created';
-
+Go
 -- DecryptImage
 CREATE FUNCTION dbo.DecryptImage 
 (
@@ -182,7 +182,7 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].Decr
 GO
 
 PRINT 'DecryptImage created';
-
+Go
 -- GetImageInfo
 CREATE FUNCTION dbo.GetImageInfo 
 (
@@ -193,20 +193,5 @@ AS EXTERNAL NAME MS_SQL_Image_convert.[MS_SQL_Image_convert.ImageFunctions].GetI
 GO
 
 PRINT 'GetImageInfo created';
-
--- =============================================
--- Verify deployment
--- =============================================
-DECLARE @func_count INT;
-SELECT @func_count = COUNT(*) 
-FROM sys.objects 
-WHERE type = 'FN' 
-AND name IN ('ConvertToJpg', 'ConvertToPng', 'ResizeImage', 'ReduceImageSize', 
-             'EncryptImage', 'DecryptImage', 'GetImageInfo');
-
-IF @func_count = 7
-    PRINT 'SUCCESS: All 7 functions deployed successfully to database: ' + DB_NAME();
-ELSE
-    PRINT 'ERROR: Only ' + CAST(@func_count AS NVARCHAR(10)) + ' of 7 functions were created in database: ' + DB_NAME();
 
 PRINT 'Deployment completed for database: ' + DB_NAME(); 

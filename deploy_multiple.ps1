@@ -74,13 +74,13 @@ PRINT 'Deploying to database: {0}';
 -- =============================================
 
 -- Drop existing functions
-IF OBJECT_ID('dbo.ConvertToJpg', 'FN') IS NOT NULL DROP FUNCTION dbo.ConvertToJpg;
-IF OBJECT_ID('dbo.ConvertToPng', 'FN') IS NOT NULL DROP FUNCTION dbo.ConvertToPng;
-IF OBJECT_ID('dbo.ResizeImage', 'FN') IS NOT NULL DROP FUNCTION dbo.ResizeImage;
-IF OBJECT_ID('dbo.ReduceImageSize', 'FN') IS NOT NULL DROP FUNCTION dbo.ReduceImageSize;
-IF OBJECT_ID('dbo.EncryptImage', 'FN') IS NOT NULL DROP FUNCTION dbo.EncryptImage;
-IF OBJECT_ID('dbo.DecryptImage', 'FN') IS NOT NULL DROP FUNCTION dbo.DecryptImage;
-IF OBJECT_ID('dbo.GetImageInfo', 'FN') IS NOT NULL DROP FUNCTION dbo.GetImageInfo;
+IF OBJECT_ID('dbo.ConvertToJpg') IS NOT NULL DROP FUNCTION dbo.ConvertToJpg;
+IF OBJECT_ID('dbo.ConvertToPng') IS NOT NULL DROP FUNCTION dbo.ConvertToPng;
+IF OBJECT_ID('dbo.ResizeImage') IS NOT NULL DROP FUNCTION dbo.ResizeImage;
+IF OBJECT_ID('dbo.ReduceImageSize') IS NOT NULL DROP FUNCTION dbo.ReduceImageSize;
+IF OBJECT_ID('dbo.EncryptImage') IS NOT NULL DROP FUNCTION dbo.EncryptImage;
+IF OBJECT_ID('dbo.DecryptImage') IS NOT NULL DROP FUNCTION dbo.DecryptImage;
+IF OBJECT_ID('dbo.GetImageInfo') IS NOT NULL DROP FUNCTION dbo.GetImageInfo;
 
 PRINT 'Dropped existing functions';
 
