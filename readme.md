@@ -25,6 +25,12 @@ also if you want to use dotnet cli, you need to install .NET 8+ SDK.
    ```powershell
    dotnet build MS-SQL-Image_convert.csproj --configuration Release
    ```
+4. **For Production Use** I recommand to use your own key file. for avoid malicious copy install.
+    - but, hopefully, github release artifact hash can easily see on github release page.
+        - So, you can download the dll and check the hash.
+    - And, you can create key file with `sn -k MS-SQL-Image_convert.snk`
+        - `sn` is a tool for creating and managing strong names. provided by .NET Framework SDK.
+            - you can find it in `C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8.1 Tools\`
 
 ## Functions Available
 
