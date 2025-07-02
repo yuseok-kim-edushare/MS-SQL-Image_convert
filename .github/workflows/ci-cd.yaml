@@ -33,11 +33,11 @@ jobs:
 
     - name: Restore dependencies
       run: |
-        dotnet restore ms-sql-image2jpg.csproj
+        dotnet restore MS-SQL-Image_convert.csproj
     
     - name: Build solution for release
       run: |
-        dotnet build ms-sql-image2jpg.csproj --configuration ${{ env.BUILD_CONFIG }} --no-restore -f net481
+        dotnet build MS-SQL-Image_convert.csproj --configuration ${{ env.BUILD_CONFIG }} --no-restore -f net481
        
     - name: Get latest release version and Generate release notes
       id: get_latest_release
