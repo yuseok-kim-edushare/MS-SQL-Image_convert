@@ -1,23 +1,5 @@
 version: 2
 updates:
-  # Configuration for all NuGet packages via solution file
-  - package-ecosystem: "nuget"
-    directory: "/"
-    schedule:
-      interval: "daily"
-      time: "12:00"
-      timezone: Asia/Seoul
-    open-pull-requests-limit: 10
-    target-branch: "main"
-    labels:
-      - "dependencies"
-      - "nuget"
-    groups:
-      nuget-dependencies:
-        patterns:
-          - "*"
-    allow:
-      - dependency-type: "all"
 
   # Configuration for GitHub Actions
   - package-ecosystem: "github-actions"
@@ -26,6 +8,3 @@ updates:
       interval: "daily"
       time: "09:00"
       timezone: "UTC"
-    labels:
-      - "dependencies"
-      - "github-actions"
