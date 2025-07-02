@@ -96,8 +96,18 @@ dbo.GetImageInfo(@imageData VARBINARY(MAX)) RETURNS NVARCHAR(MAX)
 
 1. Build the project to generate the DLL
 2. Copy the DLL to your SQL Server
-3. Run the deployment script (deploy.sql) on your database
-4. Ensure CLR is enabled and database is set to TRUSTWORTHY
+3. **Deploy to databases**: See [Deployment Guide](README_deployment.md) for multiple deployment options
+4. Ensure CLR is enabled
+
+### Quick Start Deployment
+
+For the easiest deployment experience, use the **Single Database Script**:
+
+1. Use the `deploy_single_db.sql` script
+2. Edit the `@target_db` variable for each database you want to deploy to
+3. Run the script once per database
+
+📖 **Full deployment documentation**: [README_deployment.md](README_deployment.md)
 
 ## Usage Examples
 
