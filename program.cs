@@ -147,26 +147,37 @@ namespace MS_SQL_Image_convert
             try
             {
                 byte[] currentData = imageData.Value;
-                
+
                 // If already smaller than target, return as-is
                 if (currentData.Length <= targetSizeKB * 1024)
+                {
+                    // Check if the image is already JPEG. If not, convert it.
+                    using (var ms = new MemoryStream(currentData))
+                    using (var img = Image.FromStream(ms))
+                    {
+                        if (!img.RawFormat.Equals(ImageFormat.Jpeg))
+                        {
+                            return new SqlBytes(CompressImage(img, quality));
+                        }
+                    }
                     return imageData;
+                }
 
                 using (MemoryStream inputStream = new MemoryStream(currentData))
                 using (Image originalImage = Image.FromStream(inputStream))
                 {
                     int currentWidth = originalImage.Width;
                     int currentHeight = originalImage.Height;
-                    
-                    // Try compression first
+
+                    // Try compression first (converts to JPEG)
                     byte[] compressedData = CompressImage(originalImage, quality);
-                    
+
                     // If still too large, progressively reduce dimensions
                     while (compressedData.Length > targetSizeKB * 1024 && currentWidth > 100 && currentHeight > 100)
                     {
                         currentWidth = (int)(currentWidth * 0.9);
                         currentHeight = (int)(currentHeight * 0.9);
-                        
+
                         using (Bitmap resizedImage = new Bitmap(currentWidth, currentHeight))
                         using (Graphics graphics = Graphics.FromImage(resizedImage))
                         {
@@ -174,11 +185,11 @@ namespace MS_SQL_Image_convert
                             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
                             graphics.SmoothingMode = SmoothingMode.HighQuality;
                             graphics.DrawImage(originalImage, 0, 0, currentWidth, currentHeight);
-                            
+
                             compressedData = CompressImage(resizedImage, quality);
                         }
                     }
-                    
+
                     return new SqlBytes(compressedData);
                 }
             }
