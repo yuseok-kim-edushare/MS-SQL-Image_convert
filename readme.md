@@ -61,6 +61,7 @@ dbo.ResizeImage(@imageData VARBINARY(MAX), @width INT, @height INT, @maintainAsp
 
 ### 4. ReduceImageSize
 Reduces image file size by applying compression and optionally resizing.
+**This Function convert image to jpeg format to reduce size by compression.**
 ```sql
 dbo.ReduceImageSize(@imageData VARBINARY(MAX), @maxSizeKB INT = 100, @jpegQuality INT = 85) RETURNS VARBINARY(MAX)
 ```
