@@ -14,7 +14,6 @@ jobs:
     runs-on: windows-2022
     env:
       BUILD_CONFIG: Release
-      NET_VERSION: net481
 
     steps:
     - name: Checkout code
@@ -23,13 +22,11 @@ jobs:
         fetch-tags: true
         fetch-depth: 0
 
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
+    - name: Cache NuGet packages (using net install)
+      uses: actions/setup-dotnet@v4
       with:
-        path: ${{ env.USERPROFILE }}\.nuget\packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.sln*', '**/*.csproj*') }}
-        restore-keys: |
-          ${{ runner.os }}-nuget-
+        dotnet-version: 8
+        cache: true
 
     - name: Restore dependencies
       run: |
