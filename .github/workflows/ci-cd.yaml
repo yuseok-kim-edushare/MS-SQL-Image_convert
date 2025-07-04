@@ -22,11 +22,15 @@ jobs:
         fetch-tags: true
         fetch-depth: 0
 
-    - name: Cache NuGet packages (using net install)
-      uses: actions/setup-dotnet@v4
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
       with:
-        dotnet-version: 8
-        cache: true
+        path: |
+          ~/.nuget/packages
+          %USERPROFILE%\.nuget\packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.sln') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
 
     - name: Restore dependencies
       run: |
