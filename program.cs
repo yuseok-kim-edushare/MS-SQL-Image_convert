@@ -200,7 +200,7 @@ namespace MS_SQL_Image_convert
         }
 
         /// <summary>
-        /// Encrypts image data using AES encryption
+        /// Encrypts image data using AES-GCM encryption
         /// </summary>
         [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
         public static SqlBytes EncryptImage(SqlBytes imageData, SqlString password)
@@ -213,35 +213,9 @@ namespace MS_SQL_Image_convert
 
             try
             {
-                using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
-                {
-                    aes.KeySize = 256;
-                    aes.BlockSize = 128;
-                    aes.Mode = CipherMode.CBC;
-                    aes.Padding = PaddingMode.PKCS7;
-
-                    // Derive key and IV from password
-                    byte[] salt = new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 };
-                    using (Rfc2898DeriveBytes key = new Rfc2898DeriveBytes(password.Value, salt, 10000))
-                    {
-                        aes.Key = key.GetBytes(32);
-                        aes.IV = key.GetBytes(16);
-                    }
-
-                    using (MemoryStream outputStream = new MemoryStream())
-                    {
-                        // Write IV to the beginning of the output
-                        outputStream.Write(aes.IV, 0, aes.IV.Length);
-
-                        using (CryptoStream cryptoStream = new CryptoStream(outputStream, aes.CreateEncryptor(), CryptoStreamMode.Write))
-                        {
-                            cryptoStream.Write(imageData.Value, 0, imageData.Value.Length);
-                            cryptoStream.FlushFinalBlock();
-                        }
-
-                        return new SqlBytes(outputStream.ToArray());
-                    }
-                }
+                // Use AES-GCM encryption for better security and performance
+                byte[] encryptedData = BcryptInterop.EncryptAesGcmBytes(imageData.Value, password.Value);
+                return new SqlBytes(encryptedData);
             }
             catch (Exception ex)
             {
@@ -250,7 +224,7 @@ namespace MS_SQL_Image_convert
         }
 
         /// <summary>
-        /// Decrypts image data using AES decryption
+        /// Decrypts image data using AES-GCM decryption
         /// </summary>
         [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
         public static SqlBytes DecryptImage(SqlBytes encryptedData, SqlString password)
@@ -263,33 +237,9 @@ namespace MS_SQL_Image_convert
 
             try
             {
-                using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
-                {
-                    aes.KeySize = 256;
-                    aes.BlockSize = 128;
-                    aes.Mode = CipherMode.CBC;
-                    aes.Padding = PaddingMode.PKCS7;
-
-                    // Extract IV from the beginning of encrypted data
-                    byte[] iv = new byte[16];
-                    Array.Copy(encryptedData.Value, 0, iv, 0, 16);
-                    aes.IV = iv;
-
-                    // Derive key from password
-                    byte[] salt = new byte[] { 0x49, 0x76, 0x61, 0x6e, 0x20, 0x4d, 0x65, 0x64, 0x76, 0x65, 0x64, 0x65, 0x76 };
-                    using (Rfc2898DeriveBytes key = new Rfc2898DeriveBytes(password.Value, salt, 10000))
-                    {
-                        aes.Key = key.GetBytes(32);
-                    }
-
-                    using (MemoryStream inputStream = new MemoryStream(encryptedData.Value, 16, encryptedData.Value.Length - 16))
-                    using (CryptoStream cryptoStream = new CryptoStream(inputStream, aes.CreateDecryptor(), CryptoStreamMode.Read))
-                    using (MemoryStream outputStream = new MemoryStream())
-                    {
-                        cryptoStream.CopyTo(outputStream);
-                        return new SqlBytes(outputStream.ToArray());
-                    }
-                }
+                // Use AES-GCM decryption for better security and performance
+                byte[] decryptedData = BcryptInterop.DecryptAesGcmBytes(encryptedData.Value, password.Value);
+                return new SqlBytes(decryptedData);
             }
             catch (Exception ex)
             {
