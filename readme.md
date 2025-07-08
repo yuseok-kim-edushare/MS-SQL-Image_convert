@@ -70,7 +70,7 @@ dbo.ReduceImageSize(@imageData VARBINARY(MAX), @maxSizeKB INT = 100, @jpegQualit
 - `@jpegQuality`: JPEG compression quality (1-100, default: 85)
 
 ### 5. EncryptImage
-Encrypts image data using AES-256 encryption.
+Encrypts image data using AES-256 GCM encryption.
 ```sql
 dbo.EncryptImage(@imageData VARBINARY(MAX), @password NVARCHAR(MAX)) RETURNS VARBINARY(MAX)
 ```
