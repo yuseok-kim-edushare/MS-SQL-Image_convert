@@ -104,8 +104,9 @@ namespace MS_SQL_Image_convert
         /// <param name="plainData">Data to encrypt</param>
         /// <param name="password">Password for key derivation</param>
         /// <param name="salt">Salt for key derivation (optional, will generate if null)</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000 for better performance)</param>
         /// <returns>Encrypted data with nonce, salt, and tag</returns>
-        public static byte[] EncryptAesGcmBytes(byte[] plainData, string password, byte[] salt = null)
+        public static byte[] EncryptAesGcmBytes(byte[] plainData, string password, byte[] salt = null, int iterations = 2000)
         {
             if (plainData == null) throw new ArgumentNullException("plainData");
             if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
@@ -122,7 +123,7 @@ namespace MS_SQL_Image_convert
 
             // Derive 32-byte key from password
             byte[] key;
-            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 10000))
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations))
             {
                 key = pbkdf2.GetBytes(32);
             }
@@ -150,8 +151,9 @@ namespace MS_SQL_Image_convert
         /// </summary>
         /// <param name="encryptedData">Encrypted data with salt, nonce, and tag</param>
         /// <param name="password">Password for key derivation</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000 for better performance)</param>
         /// <returns>Decrypted data</returns>
-        public static byte[] DecryptAesGcmBytes(byte[] encryptedData, string password)
+        public static byte[] DecryptAesGcmBytes(byte[] encryptedData, string password, int iterations = 2000)
         {
             if (encryptedData == null) throw new ArgumentNullException("encryptedData");
             if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
@@ -174,7 +176,7 @@ namespace MS_SQL_Image_convert
 
             // Derive key from password and salt
             byte[] key;
-            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 10000))
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations))
             {
                 key = pbkdf2.GetBytes(32);
             }
