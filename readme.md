@@ -1,10 +1,11 @@
 # MS-SQL-Image_convert
+[한국어-AI번역본](readme.ko.md)
 This Repository is for convert image inplace in MS-SQL Server.
 convert format or en/decrypt and so on.
 
 ## Features
 
-- Convert Image byte stream to specific format byte stream (like jpg, png)
+- Convert Image byte stream to specific format byte stream (like jpg, png) and encrypt and so on
 
 ## Requirements
 

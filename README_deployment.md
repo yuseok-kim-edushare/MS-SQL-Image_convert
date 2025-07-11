@@ -1,5 +1,6 @@
 # MS-SQL-Image_convert Deployment Guide
 
+[한국어-AI번역본](README_deployment.ko.md)
 This guide provides multiple options for deploying the MS-SQL-Image_convert CLR assembly to multiple SQL Server databases.
 
 ## Prerequisites
