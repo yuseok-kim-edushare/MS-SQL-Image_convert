@@ -10,9 +10,10 @@ convert format or en/decrypt and so on.
 
 - Windows 10 20H2 or Later (server 2022 or later)
   - .NET Framework 4.8.1
-- Not Ensured, but it should work with .NET 4.8 and windows 7 or later
-  - MS introduce no comapatibility change from .NET 4.8 to .NET 4.8.1
-    - then, it should work with .NET 4.8 and windows 7 or later
+- ~~Not Ensured, but it should work with .NET 4.8 and windows 7 or later~~
+  - MS introduce no comapatibility change from .NET 4.8 to .NET 4.8.1 (just enhance support of ARM windows and some accessibility feature add)
+    - ~~then, it should work with .NET 4.8 and windows 7 or later~~
+  - And Our Server 2019 with .NET Framework 4.8 and SQL Server 2022 well works 
 
 ## Building the Library
 
