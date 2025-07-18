@@ -166,7 +166,8 @@ namespace MS_SQL_Image_convert
         /// <returns>Base64 encoded derived key with salt information</returns>
         public static string DeriveAndCacheKey(string password, byte[] salt = null, int iterations = 2000)
         {
-            if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
+            if (password == null) throw new ArgumentNullException(nameof(password), "Password cannot be null.");
+            if (password.Length == 0) throw new ArgumentException("Password cannot be an empty string.", nameof(password));
 
             // Generate salt if not provided
             if (salt == null)
