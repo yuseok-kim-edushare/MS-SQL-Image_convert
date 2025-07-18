@@ -75,7 +75,19 @@ SET ProcessedImage = dbo.ConvertToJpg(
 WHERE NeedsProcessing = 1;
 */
 
--- Example 10: Encrypt sensitive images
+-- Example 10: Encrypt sensitive images (OPTIMIZED with cached keys for better performance)
+/*
+-- Step 1: Derive key once for the batch
+DECLARE @EncryptionKey NVARCHAR(MAX) = dbo.DeriveKeyFromPassword('YourStrongPassword');
+
+-- Step 2: Use cached key for batch encryption (much faster)
+UPDATE SensitiveImages
+SET EncryptedData = dbo.EncryptImageWithCachedKey(ImageData, @EncryptionKey),
+    ImageData = NULL -- Clear original
+WHERE RequiresEncryption = 1;
+*/
+
+-- Example 10b: Traditional single-image encryption (for comparison)
 /*
 UPDATE SensitiveImages
 SET EncryptedData = dbo.EncryptImage(ImageData, 'YourStrongPassword'),
@@ -116,4 +128,93 @@ BEGIN CATCH
 END CATCH;
 
 -- Cleanup
--- DROP TABLE dbo.ImageTest; 
+-- DROP TABLE dbo.ImageTest;
+
+-- ============================================================================
+-- NEW: Performance Optimized Functions (Added in latest version)
+-- ============================================================================
+
+-- Example 14: Using cached keys for batch operations (PERFORMANCE OPTIMIZED)
+DECLARE @BatchPassword NVARCHAR(100) = 'BatchOptimizedPassword2024!';
+DECLARE @SampleData VARBINARY(MAX) = CAST(REPLICATE('SampleData', 100) AS VARBINARY(MAX));
+
+-- Step 1: Derive key once for the entire batch (new optimized approach)
+DECLARE @CachedKey NVARCHAR(MAX) = dbo.DeriveKeyFromPassword(@BatchPassword);
+
+-- Step 2: Use cached key for multiple operations (much faster than traditional method)
+DECLARE @OptimizedEncrypted VARBINARY(MAX) = dbo.EncryptImageWithCachedKey(@SampleData, @CachedKey);
+DECLARE @OptimizedDecrypted VARBINARY(MAX) = dbo.DecryptImageWithCachedKey(@OptimizedEncrypted, @CachedKey);
+
+-- Verify the optimized method works correctly
+IF @SampleData = @OptimizedDecrypted
+    PRINT 'SUCCESS: Optimized cached key encryption/decryption works correctly';
+ELSE
+    PRINT 'ERROR: Optimized method failed';
+
+-- Example 15: Performance comparison demonstration
+DECLARE @TestData VARBINARY(MAX) = CAST(REPLICATE('PerformanceTest', 50) AS VARBINARY(MAX));
+DECLARE @TestPassword NVARCHAR(100) = 'PerformanceTestPassword123!';
+
+-- Traditional method timing
+DECLARE @StartTime DATETIME2 = SYSDATETIME();
+DECLARE @TraditionalResult VARBINARY(MAX);
+
+-- Simulate multiple operations with traditional method
+DECLARE @Counter INT = 1;
+WHILE @Counter <= 5
+BEGIN
+    SET @TraditionalResult = dbo.EncryptImage(@TestData, @TestPassword);
+    SET @TraditionalResult = dbo.DecryptImage(@TraditionalResult, @TestPassword);
+    SET @Counter = @Counter + 1;
+END
+
+DECLARE @TraditionalTime BIGINT = DATEDIFF(MICROSECOND, @StartTime, SYSDATETIME());
+
+-- Optimized method timing
+SET @StartTime = SYSDATETIME();
+DECLARE @OptimizedTestKey NVARCHAR(MAX) = dbo.DeriveKeyFromPassword(@TestPassword);
+DECLARE @OptimizedResult VARBINARY(MAX);
+
+-- Simulate multiple operations with optimized method
+SET @Counter = 1;
+WHILE @Counter <= 5
+BEGIN
+    SET @OptimizedResult = dbo.EncryptImageWithCachedKey(@TestData, @OptimizedTestKey);
+    SET @OptimizedResult = dbo.DecryptImageWithCachedKey(@OptimizedResult, @OptimizedTestKey);
+    SET @Counter = @Counter + 1;
+END
+
+DECLARE @OptimizedTime BIGINT = DATEDIFF(MICROSECOND, @StartTime, SYSDATETIME());
+
+-- Show performance comparison
+PRINT 'Performance Comparison (5 encrypt/decrypt cycles):';
+PRINT 'Traditional method: ' + CAST(@TraditionalTime AS NVARCHAR(20)) + ' microseconds';
+PRINT 'Optimized method: ' + CAST(@OptimizedTime AS NVARCHAR(20)) + ' microseconds';
+
+IF @TraditionalTime > 0
+BEGIN
+    DECLARE @ImprovementPct DECIMAL(10,2) = 
+        (CAST(@TraditionalTime - @OptimizedTime AS DECIMAL(10,2)) / @TraditionalTime) * 100;
+    PRINT 'Performance improvement: ' + CAST(@ImprovementPct AS NVARCHAR(20)) + '%';
+END
+
+-- Example 16: Best practices for batch processing
+/*
+-- RECOMMENDED: For batch operations with same password
+DECLARE @BatchKey NVARCHAR(MAX) = dbo.DeriveKeyFromPassword('YourPassword');
+
+UPDATE YourImageTable
+SET EncryptedColumn = dbo.EncryptImageWithCachedKey(ImageColumn, @BatchKey)
+WHERE BatchId = @SomeBatch;
+
+-- NOT RECOMMENDED: For batch operations (slower)
+UPDATE YourImageTable  
+SET EncryptedColumn = dbo.EncryptImage(ImageColumn, 'YourPassword')
+WHERE BatchId = @SomeBatch;
+
+-- RECOMMENDED: For single operations (either method is fine)
+DECLARE @SingleEncrypted VARBINARY(MAX) = dbo.EncryptImage(@SingleImage, 'Password');
+-- OR
+DECLARE @SingleKey NVARCHAR(MAX) = dbo.DeriveKeyFromPassword('Password');
+DECLARE @SingleEncrypted2 VARBINARY(MAX) = dbo.EncryptImageWithCachedKey(@SingleImage, @SingleKey);
+*/ 
