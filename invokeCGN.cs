@@ -229,8 +229,9 @@ namespace MS_SQL_Image_convert
         /// <returns>Encrypted data</returns>
         public static byte[] EncryptWithCachedKey(byte[] plainData, string cachedKeyWithSalt)
         {
-            if (plainData == null) throw new ArgumentNullException("plainData");
-            if (string.IsNullOrEmpty(cachedKeyWithSalt)) throw new ArgumentNullException("cachedKeyWithSalt");
+            if (plainData == null) throw new ArgumentNullException(nameof(plainData));
+            if (cachedKeyWithSalt == null) throw new ArgumentNullException(nameof(cachedKeyWithSalt));
+            if (cachedKeyWithSalt == string.Empty) throw new ArgumentException("Parameter cannot be an empty string.", nameof(cachedKeyWithSalt));
 
             var keyInfo = DecodeCachedKeyWithSalt(cachedKeyWithSalt);
             
