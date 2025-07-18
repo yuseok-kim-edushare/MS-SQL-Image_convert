@@ -238,7 +238,7 @@ namespace MS_SQL_Image_convert
             
             // Generate 12-byte nonce
             byte[] nonce = new byte[12];
-            using (var rng = new RNGCryptoServiceProvider())
+            using (var rng = RandomNumberGenerator.Create())
             {
                 rng.GetBytes(nonce);
             }
