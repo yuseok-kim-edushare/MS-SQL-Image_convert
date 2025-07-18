@@ -99,13 +99,59 @@ namespace MS_SQL_Image_convert
         }
 
         /// <summary>
-        /// Encrypts byte array using AES-GCM with derived key from password
+        /// Encrypts string using AES-GCM with password-based key derivation
+        /// </summary>
+        /// <param name="plainText">Text to encrypt</param>
+        /// <param name="password">Password for key derivation</param>
+        /// <param name="salt">Salt for key derivation (optional, will generate if null)</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Base64 encoded encrypted data with salt, nonce, and tag</returns>
+        public static string EncryptAesGcmWithPassword(string plainText, string password, byte[] salt = null, int iterations = 2000)
+        {
+            if (plainText == null) throw new ArgumentNullException("plainText");
+            if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
+
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] encryptedBytes = EncryptAesGcmBytes(plainBytes, password, salt, iterations);
+            
+            // Clear sensitive data
+            Array.Clear(plainBytes, 0, plainBytes.Length);
+            
+            return Convert.ToBase64String(encryptedBytes);
+        }
+
+        /// <summary>
+        /// Decrypts string using AES-GCM with password-based key derivation
+        /// </summary>
+        /// <param name="base64EncryptedData">Base64 encoded encrypted data</param>
+        /// <param name="password">Password for key derivation</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Decrypted text</returns>
+        public static string DecryptAesGcmWithPassword(string base64EncryptedData, string password, int iterations = 2000)
+        {
+            if (string.IsNullOrEmpty(base64EncryptedData)) throw new ArgumentNullException("base64EncryptedData");
+            if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
+
+            byte[] encryptedBytes = Convert.FromBase64String(base64EncryptedData);
+            byte[] decryptedBytes = DecryptAesGcmBytes(encryptedBytes, password, iterations);
+            
+            string result = Encoding.UTF8.GetString(decryptedBytes);
+            
+            // Clear sensitive data
+            Array.Clear(encryptedBytes, 0, encryptedBytes.Length);
+            Array.Clear(decryptedBytes, 0, decryptedBytes.Length);
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Encrypts byte array using AES-GCM with password-based key derivation
         /// </summary>
         /// <param name="plainData">Data to encrypt</param>
         /// <param name="password">Password for key derivation</param>
         /// <param name="salt">Salt for key derivation (optional, will generate if null)</param>
-        /// <param name="iterations">PBKDF2 iteration count (default: 2000 for better performance)</param>
-        /// <returns>Encrypted data with nonce, salt, and tag</returns>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Encrypted data with salt, nonce, and tag</returns>
         public static byte[] EncryptAesGcmBytes(byte[] plainData, string password, byte[] salt = null, int iterations = 2000)
         {
             if (plainData == null) throw new ArgumentNullException("plainData");
@@ -115,7 +161,7 @@ namespace MS_SQL_Image_convert
             if (salt == null)
             {
                 salt = new byte[16];
-                using (var rng = new RNGCryptoServiceProvider())
+                using (var rng = RandomNumberGenerator.Create())
                 {
                     rng.GetBytes(salt);
                 }
@@ -123,7 +169,7 @@ namespace MS_SQL_Image_convert
 
             // Derive 32-byte key from password
             byte[] key;
-            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations))
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256))
             {
                 key = pbkdf2.GetBytes(32);
             }
@@ -137,27 +183,96 @@ namespace MS_SQL_Image_convert
 
             byte[] encryptedData = EncryptAesGcmBytes(plainData, key, nonce);
 
-            // Combine salt + nonce + encrypted data for output
-            byte[] result = new byte[salt.Length + nonce.Length + encryptedData.Length];
-            Buffer.BlockCopy(salt, 0, result, 0, salt.Length);
-            Buffer.BlockCopy(nonce, 0, result, salt.Length, nonce.Length);
-            Buffer.BlockCopy(encryptedData, 0, result, salt.Length + nonce.Length, encryptedData.Length);
+            // Combine salt length (4 bytes) + salt + nonce + encrypted data for output
+            byte[] result = new byte[4 + salt.Length + nonce.Length + encryptedData.Length];
+            Buffer.BlockCopy(BitConverter.GetBytes(salt.Length), 0, result, 0, 4);
+            Buffer.BlockCopy(salt, 0, result, 4, salt.Length);
+            Buffer.BlockCopy(nonce, 0, result, 4 + salt.Length, nonce.Length);
+            Buffer.BlockCopy(encryptedData, 0, result, 4 + salt.Length + nonce.Length, encryptedData.Length);
+
+            // Clear sensitive data
+            Array.Clear(key, 0, key.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(encryptedData, 0, encryptedData.Length);
 
             return result;
         }
 
         /// <summary>
-        /// Decrypts byte array using AES-GCM with derived key from password
+        /// Decrypts byte array using AES-GCM with password-based key derivation
         /// </summary>
         /// <param name="encryptedData">Encrypted data with salt, nonce, and tag</param>
         /// <param name="password">Password for key derivation</param>
-        /// <param name="iterations">PBKDF2 iteration count (default: 2000 for better performance)</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
         /// <returns>Decrypted data</returns>
         public static byte[] DecryptAesGcmBytes(byte[] encryptedData, string password, int iterations = 2000)
         {
             if (encryptedData == null) throw new ArgumentNullException("encryptedData");
             if (string.IsNullOrEmpty(password)) throw new ArgumentNullException("password");
 
+            // Check if this is the new format (has salt length header)
+            if (encryptedData.Length >= 4)
+            {
+                int saltLength = BitConverter.ToInt32(encryptedData, 0);
+                // If salt length is reasonable (between 8 and 64 bytes), assume new format
+                if (saltLength >= 8 && saltLength <= 64)
+                {
+                    return DecryptAesGcmBytesNewFormat(encryptedData, password, iterations);
+                }
+            }
+
+            // Fall back to old format (fixed 16-byte salt)
+            return DecryptAesGcmBytesOldFormat(encryptedData, password, iterations);
+        }
+
+        /// <summary>
+        /// Decrypts byte array using AES-GCM with password-based key derivation (new format with variable salt)
+        /// </summary>
+        /// <param name="encryptedData">Encrypted data with salt length header, salt, nonce, and tag</param>
+        /// <param name="password">Password for key derivation</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Decrypted data</returns>
+        private static byte[] DecryptAesGcmBytesNewFormat(byte[] encryptedData, string password, int iterations = 2000)
+        {
+            const int nonceLength = 12;
+            const int tagLength = 16;
+            const int headerLength = 4; // 4 bytes to store salt length
+            if (encryptedData.Length < headerLength + nonceLength + tagLength)
+                throw new ArgumentException("Encrypted data too short", "encryptedData");
+            // Extract salt length from the header
+            int saltLength = BitConverter.ToInt32(encryptedData, 0);
+            if (saltLength <= 0 || encryptedData.Length < headerLength + saltLength + nonceLength + tagLength)
+                throw new ArgumentException("Invalid salt length in encrypted data", "encryptedData");
+            byte[] salt = new byte[saltLength];
+            byte[] nonce = new byte[nonceLength];
+            byte[] cipherWithTag = new byte[encryptedData.Length - headerLength - saltLength - nonceLength];
+            byte[] key = null;
+            Buffer.BlockCopy(encryptedData, headerLength, salt, 0, saltLength);
+            Buffer.BlockCopy(encryptedData, headerLength + saltLength, nonce, 0, nonceLength);
+            Buffer.BlockCopy(encryptedData, headerLength + saltLength + nonceLength, cipherWithTag, 0, cipherWithTag.Length);
+            // Derive key and decrypt
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256))
+            {
+                key = pbkdf2.GetBytes(32);
+            }
+            byte[] result = DecryptAesGcmBytes(cipherWithTag, key, nonce);
+            // Clear sensitive data
+            Array.Clear(salt, 0, salt.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(cipherWithTag, 0, cipherWithTag.Length);
+            Array.Clear(key, 0, key.Length);
+            return result;
+        }
+
+        /// <summary>
+        /// Decrypts byte array using AES-GCM with password-based key derivation (old format with fixed 16-byte salt)
+        /// </summary>
+        /// <param name="encryptedData">Encrypted data with fixed 16-byte salt, nonce, and tag</param>
+        /// <param name="password">Password for key derivation</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Decrypted data</returns>
+        private static byte[] DecryptAesGcmBytesOldFormat(byte[] encryptedData, string password, int iterations = 2000)
+        {
             const int saltLength = 16;
             const int nonceLength = 12;
             const int tagLength = 16;
@@ -174,14 +289,22 @@ namespace MS_SQL_Image_convert
             Buffer.BlockCopy(encryptedData, saltLength, nonce, 0, nonceLength);
             Buffer.BlockCopy(encryptedData, saltLength + nonceLength, cipherWithTag, 0, cipherWithTag.Length);
 
-            // Derive key from password and salt
+            // Derive key from password and salt (using old SHA1 for compatibility)
             byte[] key;
-            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations))
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA1))
             {
                 key = pbkdf2.GetBytes(32);
             }
 
-            return DecryptAesGcmBytes(cipherWithTag, key, nonce);
+            byte[] result = DecryptAesGcmBytes(cipherWithTag, key, nonce);
+            
+            // Clear sensitive data
+            Array.Clear(salt, 0, salt.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(cipherWithTag, 0, cipherWithTag.Length);
+            Array.Clear(key, 0, key.Length);
+            
+            return result;
         }
 
         /// <summary>
@@ -251,6 +374,10 @@ namespace MS_SQL_Image_convert
                     byte[] result = new byte[bytesWritten + tagLength];
                     Buffer.BlockCopy(cipherText, 0, result, 0, bytesWritten);
                     Buffer.BlockCopy(tagBuffer, 0, result, bytesWritten, tagLength);
+
+                    // Clear sensitive data
+                    Array.Clear(cipherText, 0, cipherText.Length);
+                    Array.Clear(tagBuffer, 0, tagBuffer.Length);
 
                     return result;
                 }
@@ -340,6 +467,12 @@ namespace MS_SQL_Image_convert
 
                     byte[] result = new byte[bytesWritten];
                     Buffer.BlockCopy(plainText, 0, result, 0, bytesWritten);
+
+                    // Clear sensitive data
+                    Array.Clear(encryptedData, 0, encryptedData.Length);
+                    Array.Clear(tag, 0, tag.Length);
+                    Array.Clear(plainText, 0, plainText.Length);
+
                     return result;
                 }
                 finally
@@ -355,6 +488,13 @@ namespace MS_SQL_Image_convert
             }
         }
 
+        /// <summary>
+        /// Encrypts string using AES-GCM with provided key and nonce (legacy method)
+        /// </summary>
+        /// <param name="plainText">Text to encrypt</param>
+        /// <param name="base64Key">Base64 encoded 32-byte key</param>
+        /// <param name="base64Nonce">Base64 encoded 12-byte nonce</param>
+        /// <returns>Base64 encoded encrypted data with authentication tag</returns>
         public static string EncryptAesGcm(string plainText, string base64Key, string base64Nonce)
         {
             if (plainText == null) throw new ArgumentNullException("plainText");
@@ -368,75 +508,24 @@ namespace MS_SQL_Image_convert
             if (key.Length != 32) throw new ArgumentException("Key must be 32 bytes", "base64Key");
             if (nonce.Length != 12) throw new ArgumentException("Nonce must be 12 bytes", "base64Nonce");
 
-            IntPtr hAlg = IntPtr.Zero;
-            IntPtr hKey = IntPtr.Zero;
-
-            try
-            {
-                // Initialize algorithm provider
-                int status = BCryptOpenAlgorithmProvider(out hAlg, BCRYPT_AES_ALGORITHM, null, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptOpenAlgorithmProvider failed with status " + status);
-
-                // Set GCM mode
-                status = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, 
-                    Encoding.Unicode.GetBytes(BCRYPT_CHAIN_MODE_GCM), 
-                    Encoding.Unicode.GetBytes(BCRYPT_CHAIN_MODE_GCM).Length, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptSetProperty failed with status " + status);
-
-                // Generate key
-                status = BCryptGenerateSymmetricKey(hAlg, out hKey, IntPtr.Zero, 0, key, key.Length, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptGenerateSymmetricKey failed with status " + status);
-
-                byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
-                const int tagLength = 16;  // GCM tag length
-
-                var authInfo = BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO.Initialize();
-                var nonceHandle = GCHandle.Alloc(nonce, GCHandleType.Pinned);
-                var tagBuffer = new byte[tagLength];
-                var tagHandle = GCHandle.Alloc(tagBuffer, GCHandleType.Pinned);
-
-                try
-                {
-                    authInfo.pbNonce = nonceHandle.AddrOfPinnedObject();
-                    authInfo.cbNonce = nonce.Length;
-                    authInfo.pbTag = tagHandle.AddrOfPinnedObject();
-                    authInfo.cbTag = tagLength;
-
-                    // Get required size
-                    int cipherLength;
-                    status = BCryptEncrypt(hKey, plainBytes, plainBytes.Length, ref authInfo,
-                        null, 0, null, 0, out cipherLength, 0);
-                    if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptEncrypt size failed with status " + status);
-
-                    byte[] cipherText = new byte[cipherLength];
-
-                    // Encrypt
-                    int bytesWritten;
-                    status = BCryptEncrypt(hKey, plainBytes, plainBytes.Length, ref authInfo,
-                        null, 0, cipherText, cipherText.Length, out bytesWritten, 0);
-                    if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptEncrypt failed with status " + status);
-
-                    // Combine ciphertext and tag
-                    byte[] result = new byte[bytesWritten + tagLength];
-                    Buffer.BlockCopy(cipherText, 0, result, 0, bytesWritten);
-                    Buffer.BlockCopy(tagBuffer, 0, result, bytesWritten, tagLength);
-
-                    // Convert final result to Base64
-                    return Convert.ToBase64String(result);
-                }
-                finally
-                {
-                    if (nonceHandle.IsAllocated) nonceHandle.Free();
-                    if (tagHandle.IsAllocated) tagHandle.Free();
-                }
-            }
-            finally
-            {
-                if (hKey != IntPtr.Zero) BCryptDestroyKey(hKey);
-                if (hAlg != IntPtr.Zero) BCryptCloseAlgorithmProvider(hAlg, 0);
-            }
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] encryptedBytes = EncryptAesGcmBytes(plainBytes, key, nonce);
+            
+            // Clear sensitive data
+            Array.Clear(key, 0, key.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(plainBytes, 0, plainBytes.Length);
+            
+            return Convert.ToBase64String(encryptedBytes);
         }
 
+        /// <summary>
+        /// Decrypts string using AES-GCM with provided key and nonce (legacy method)
+        /// </summary>
+        /// <param name="base64CipherText">Base64 encoded encrypted data</param>
+        /// <param name="base64Key">Base64 encoded 32-byte key</param>
+        /// <param name="base64Nonce">Base64 encoded 12-byte nonce</param>
+        /// <returns>Decrypted text</returns>
         public static string DecryptAesGcm(string base64CipherText, string base64Key, string base64Nonce)
         {
             if (string.IsNullOrEmpty(base64CipherText)) throw new ArgumentNullException("base64CipherText");
@@ -455,70 +544,16 @@ namespace MS_SQL_Image_convert
             if (cipherText.Length < tagLength)
                 throw new ArgumentException("Encrypted data too short", "base64CipherText");
 
-            IntPtr hAlg = IntPtr.Zero;
-            IntPtr hKey = IntPtr.Zero;
-
-            try
-            {
-                // Initialize algorithm provider
-                int status = BCryptOpenAlgorithmProvider(out hAlg, BCRYPT_AES_ALGORITHM, null, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptOpenAlgorithmProvider failed with status " + status);
-
-                // Set GCM mode
-                status = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE,
-                    Encoding.Unicode.GetBytes(BCRYPT_CHAIN_MODE_GCM),
-                    Encoding.Unicode.GetBytes(BCRYPT_CHAIN_MODE_GCM).Length, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptSetProperty failed with status " + status);
-
-                // Generate key
-                status = BCryptGenerateSymmetricKey(hAlg, out hKey, IntPtr.Zero, 0, key, key.Length, 0);
-                if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptGenerateSymmetricKey failed with status " + status);
-
-                // Separate ciphertext and tag
-                int encryptedDataLength = cipherText.Length - tagLength;
-                byte[] encryptedData = new byte[encryptedDataLength];
-                byte[] tag = new byte[tagLength];
-                Buffer.BlockCopy(cipherText, 0, encryptedData, 0, encryptedDataLength);
-                Buffer.BlockCopy(cipherText, encryptedDataLength, tag, 0, tagLength);
-
-                var authInfo = BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO.Initialize();
-                var nonceHandle = GCHandle.Alloc(nonce, GCHandleType.Pinned);
-                var tagHandle = GCHandle.Alloc(tag, GCHandleType.Pinned);
-
-                try
-                {
-                    authInfo.pbNonce = nonceHandle.AddrOfPinnedObject();
-                    authInfo.cbNonce = nonce.Length;
-                    authInfo.pbTag = tagHandle.AddrOfPinnedObject();
-                    authInfo.cbTag = tagLength;
-
-                    // Get required size
-                    int plainTextLength;
-                    status = BCryptDecrypt(hKey, encryptedData, encryptedData.Length, ref authInfo,
-                        null, 0, null, 0, out plainTextLength, 0);
-                    if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptDecrypt size failed with status " + status);
-
-                    byte[] plainText = new byte[plainTextLength];
-
-                    // Decrypt
-                    int bytesWritten;
-                    status = BCryptDecrypt(hKey, encryptedData, encryptedData.Length, ref authInfo,
-                        null, 0, plainText, plainText.Length, out bytesWritten, 0);
-                    if (status != STATUS_SUCCESS) throw new CryptographicException("BCryptDecrypt failed with status " + status);
-
-                    return Encoding.UTF8.GetString(plainText, 0, bytesWritten);
-                }
-                finally
-                {
-                    if (nonceHandle.IsAllocated) nonceHandle.Free();
-                    if (tagHandle.IsAllocated) tagHandle.Free();
-                }
-            }
-            finally
-            {
-                if (hKey != IntPtr.Zero) BCryptDestroyKey(hKey);
-                if (hAlg != IntPtr.Zero) BCryptCloseAlgorithmProvider(hAlg, 0);
-            }
+            byte[] decryptedBytes = DecryptAesGcmBytes(cipherText, key, nonce);
+            string result = Encoding.UTF8.GetString(decryptedBytes);
+            
+            // Clear sensitive data
+            Array.Clear(cipherText, 0, cipherText.Length);
+            Array.Clear(key, 0, key.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(decryptedBytes, 0, decryptedBytes.Length);
+            
+            return result;
         }
     }
 }
