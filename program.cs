@@ -248,8 +248,70 @@ namespace MS_SQL_Image_convert
         }
 
         /// <summary>
-        /// Gets image information
+        /// Derives a key from password and caches it for performance optimization
         /// </summary>
+        [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
+        public static SqlString DeriveKeyFromPassword(SqlString password)
+        {
+            if (password.IsNull || string.IsNullOrEmpty(password.Value))
+                throw new ArgumentException("Password cannot be null or empty");
+
+            try
+            {
+                string cachedKey = BcryptInterop.DeriveAndCacheKey(password.Value);
+                return new SqlString(cachedKey);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Error deriving key from password: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Encrypts image data using a cached key for improved performance
+        /// </summary>
+        [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
+        public static SqlBytes EncryptImageWithCachedKey(SqlBytes imageData, SqlString cachedKey)
+        {
+            if (imageData.IsNull || imageData.Value.Length == 0)
+                return SqlBytes.Null;
+
+            if (cachedKey.IsNull || string.IsNullOrEmpty(cachedKey.Value))
+                throw new ArgumentException("Cached key cannot be null or empty");
+
+            try
+            {
+                byte[] encryptedData = BcryptInterop.EncryptWithCachedKey(imageData.Value, cachedKey.Value);
+                return new SqlBytes(encryptedData);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Error encrypting image with cached key: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Decrypts image data using a cached key for improved performance
+        /// </summary>
+        [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
+        public static SqlBytes DecryptImageWithCachedKey(SqlBytes encryptedData, SqlString cachedKey)
+        {
+            if (encryptedData.IsNull || encryptedData.Value.Length == 0)
+                return SqlBytes.Null;
+
+            if (cachedKey.IsNull || string.IsNullOrEmpty(cachedKey.Value))
+                throw new ArgumentException("Cached key cannot be null or empty");
+
+            try
+            {
+                byte[] decryptedData = BcryptInterop.DecryptWithCachedKey(encryptedData.Value, cachedKey.Value);
+                return new SqlBytes(decryptedData);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Error decrypting image with cached key: {ex.Message}", ex);
+            }
+        }
         [SqlFunction(IsDeterministic = true, IsPrecise = true, DataAccess = DataAccessKind.None)]
         public static SqlString GetImageInfo(SqlBytes imageData)
         {

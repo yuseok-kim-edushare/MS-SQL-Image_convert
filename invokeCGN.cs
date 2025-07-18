@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Security;
+using System.Threading;
 
 namespace MS_SQL_Image_convert
 {
@@ -13,6 +16,34 @@ namespace MS_SQL_Image_convert
         private const string BCRYPT_CHAINING_MODE = "ChainingMode";
         private const string BCRYPT_CHAIN_MODE_GCM = "ChainingModeGCM";
         private const int STATUS_SUCCESS = 0;
+
+        /// <summary>
+        /// Cached key entry with expiration time
+        /// </summary>
+        private class CachedKeyEntry
+        {
+            public byte[] Key { get; set; }
+            public DateTime ExpiresAt { get; set; }
+            
+            public bool IsExpired => DateTime.UtcNow > ExpiresAt;
+        }
+
+        /// <summary>
+        /// Thread-safe cache for derived keys
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, CachedKeyEntry> _keyCache = 
+            new ConcurrentDictionary<string, CachedKeyEntry>();
+        
+        /// <summary>
+        /// Default cache expiration time in minutes
+        /// </summary>
+        private static readonly int _cacheExpirationMinutes = 30;
+        
+        /// <summary>
+        /// Timer for cache cleanup
+        /// </summary>
+        private static readonly Timer _cleanupTimer = new Timer(CleanupExpiredKeys, null, 
+            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
         [DllImport("bcrypt.dll")]
         private static extern int BCryptOpenAlgorithmProvider(
@@ -97,6 +128,276 @@ namespace MS_SQL_Image_convert
                 };
             }
         }
+
+        /// <summary>
+        /// Cleanup expired keys from cache
+        /// </summary>
+        private static void CleanupExpiredKeys(object state)
+        {
+            var expiredKeys = new List<string>();
+            
+            foreach (var kvp in _keyCache)
+            {
+                if (kvp.Value.IsExpired)
+                {
+                    expiredKeys.Add(kvp.Key);
+                }
+            }
+            
+            foreach (var key in expiredKeys)
+            {
+                if (_keyCache.TryRemove(key, out var entry))
+                {
+                    // Clear the key data for security
+                    if (entry.Key != null)
+                    {
+                        Array.Clear(entry.Key, 0, entry.Key.Length);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Derives a key from password and caches it for reuse
+        /// </summary>
+        /// <param name="password">Password for key derivation</param>
+        /// <param name="salt">Salt for key derivation (optional, will generate if null)</param>
+        /// <param name="iterations">PBKDF2 iteration count (default: 2000)</param>
+        /// <returns>Base64 encoded derived key with salt information</returns>
+        public static string DeriveAndCacheKey(string password, byte[] salt = null, int iterations = 2000)
+        {
+            if (password == null) throw new ArgumentNullException(nameof(password), "Password cannot be null.");
+            if (password.Length == 0) throw new ArgumentException("Password cannot be an empty string.", nameof(password));
+
+            // Generate salt if not provided
+            if (salt == null)
+            {
+                salt = new byte[16];
+                using (var rng = RandomNumberGenerator.Create())
+                {
+                    rng.GetBytes(salt);
+                }
+            }
+
+            // Create cache key from password hash and salt
+            string cacheKey = CreateCacheKey(password, salt, iterations);
+            
+            // Check if key is already cached
+            if (_keyCache.TryGetValue(cacheKey, out var cachedEntry) && !cachedEntry.IsExpired)
+            {
+                // Return cached key with salt information
+                return EncodeCachedKeyWithSalt(cachedEntry.Key, salt);
+            }
+
+            // Derive new key
+            byte[] derivedKey;
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256))
+            {
+                derivedKey = pbkdf2.GetBytes(32);
+            }
+
+            // Cache the key
+            var newEntry = new CachedKeyEntry
+            {
+                Key = new byte[derivedKey.Length],
+                ExpiresAt = DateTime.UtcNow.AddMinutes(_cacheExpirationMinutes)
+            };
+            Buffer.BlockCopy(derivedKey, 0, newEntry.Key, 0, derivedKey.Length);
+            
+            _keyCache.AddOrUpdate(cacheKey, newEntry, (key, oldEntry) => 
+            {
+                // Clear old key for security
+                if (oldEntry.Key != null)
+                {
+                    Array.Clear(oldEntry.Key, 0, oldEntry.Key.Length);
+                }
+                return newEntry;
+            });
+
+            string result = EncodeCachedKeyWithSalt(derivedKey, salt);
+            
+            // Clear local key copy
+            Array.Clear(derivedKey, 0, derivedKey.Length);
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Encrypts data using a cached key
+        /// </summary>
+        /// <param name="plainData">Data to encrypt</param>
+        /// <param name="cachedKeyWithSalt">Base64 encoded cached key with salt information</param>
+        /// <returns>Encrypted data</returns>
+        public static byte[] EncryptWithCachedKey(byte[] plainData, string cachedKeyWithSalt)
+        {
+            if (plainData == null) throw new ArgumentNullException(nameof(plainData));
+            if (cachedKeyWithSalt == null) throw new ArgumentNullException(nameof(cachedKeyWithSalt));
+            if (cachedKeyWithSalt == string.Empty) throw new ArgumentException("Parameter cannot be an empty string.", nameof(cachedKeyWithSalt));
+
+            var keyInfo = DecodeCachedKeyWithSalt(cachedKeyWithSalt);
+            
+            // Generate 12-byte nonce
+            byte[] nonce = new byte[12];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(nonce);
+            }
+
+            byte[] encryptedData = EncryptAesGcmBytes(plainData, keyInfo.Key, nonce);
+
+            // Combine salt length (4 bytes) + salt + nonce + encrypted data for output
+            byte[] result = new byte[4 + keyInfo.Salt.Length + nonce.Length + encryptedData.Length];
+            Buffer.BlockCopy(BitConverter.GetBytes(keyInfo.Salt.Length), 0, result, 0, 4);
+            Buffer.BlockCopy(keyInfo.Salt, 0, result, 4, keyInfo.Salt.Length);
+            Buffer.BlockCopy(nonce, 0, result, 4 + keyInfo.Salt.Length, nonce.Length);
+            Buffer.BlockCopy(encryptedData, 0, result, 4 + keyInfo.Salt.Length + nonce.Length, encryptedData.Length);
+
+            // Clear sensitive data
+            Array.Clear(keyInfo.Key, 0, keyInfo.Key.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(encryptedData, 0, encryptedData.Length);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Decrypts data using a cached key
+        /// </summary>
+        /// <param name="encryptedData">Encrypted data with salt, nonce, and tag</param>
+        /// <param name="cachedKeyWithSalt">Base64 encoded cached key with salt information</param>
+        /// <returns>Decrypted data</returns>
+        public static byte[] DecryptWithCachedKey(byte[] encryptedData, string cachedKeyWithSalt)
+        {
+            if (encryptedData == null) throw new ArgumentNullException("encryptedData");
+            if (string.IsNullOrEmpty(cachedKeyWithSalt)) throw new ArgumentNullException("cachedKeyWithSalt");
+
+            var keyInfo = DecodeCachedKeyWithSalt(cachedKeyWithSalt);
+
+            const int nonceLength = 12;
+            const int tagLength = 16;
+            const int headerLength = 4; // 4 bytes to store salt length
+            
+            if (encryptedData.Length < headerLength + nonceLength + tagLength)
+                throw new ArgumentException("Encrypted data too short", "encryptedData");
+
+            // Extract salt length from the header
+            int saltLength = BitConverter.ToInt32(encryptedData, 0);
+            if (saltLength <= 0 || encryptedData.Length < headerLength + saltLength + nonceLength + tagLength)
+                throw new ArgumentException("Invalid salt length in encrypted data", "encryptedData");
+
+            // Verify salt matches
+            byte[] dataSalt = new byte[saltLength];
+            Buffer.BlockCopy(encryptedData, headerLength, dataSalt, 0, saltLength);
+            
+            bool saltMatches = dataSalt.Length == keyInfo.Salt.Length;
+            if (saltMatches)
+            {
+                for (int i = 0; i < dataSalt.Length; i++)
+                {
+                    if (dataSalt[i] != keyInfo.Salt[i])
+                    {
+                        saltMatches = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (!saltMatches)
+                throw new ArgumentException("Salt in encrypted data does not match cached key salt", "encryptedData");
+
+            byte[] nonce = new byte[nonceLength];
+            byte[] cipherWithTag = new byte[encryptedData.Length - headerLength - saltLength - nonceLength];
+
+            Buffer.BlockCopy(encryptedData, headerLength + saltLength, nonce, 0, nonceLength);
+            Buffer.BlockCopy(encryptedData, headerLength + saltLength + nonceLength, cipherWithTag, 0, cipherWithTag.Length);
+
+            byte[] result = DecryptAesGcmBytes(cipherWithTag, keyInfo.Key, nonce);
+
+            // Clear sensitive data
+            Array.Clear(keyInfo.Key, 0, keyInfo.Key.Length);
+            Array.Clear(dataSalt, 0, dataSalt.Length);
+            Array.Clear(nonce, 0, nonce.Length);
+            Array.Clear(cipherWithTag, 0, cipherWithTag.Length);
+
+            return result;
+        }
+
+        #region Helper Methods for Key Caching
+
+        /// <summary>
+        /// Information about cached key and salt
+        /// </summary>
+        private class CachedKeyInfo
+        {
+            public byte[] Key { get; set; }
+            public byte[] Salt { get; set; }
+        }
+
+        /// <summary>
+        /// Creates a cache key from password, salt and iterations
+        /// </summary>
+        private static string CreateCacheKey(string password, byte[] salt, int iterations)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var passwordBytes = Encoding.UTF8.GetBytes(password);
+                var iterationBytes = BitConverter.GetBytes(iterations);
+                var combined = new byte[passwordBytes.Length + salt.Length + iterationBytes.Length];
+                
+                Buffer.BlockCopy(passwordBytes, 0, combined, 0, passwordBytes.Length);
+                Buffer.BlockCopy(salt, 0, combined, passwordBytes.Length, salt.Length);
+                Buffer.BlockCopy(iterationBytes, 0, combined, passwordBytes.Length + salt.Length, iterationBytes.Length);
+                
+                var hash = sha256.ComputeHash(combined);
+                
+                // Clear sensitive data
+                Array.Clear(passwordBytes, 0, passwordBytes.Length);
+                Array.Clear(combined, 0, combined.Length);
+                
+                return Convert.ToBase64String(hash);
+            }
+        }
+
+        /// <summary>
+        /// Encodes cached key with salt information for returning to caller
+        /// </summary>
+        private static string EncodeCachedKeyWithSalt(byte[] key, byte[] salt)
+        {
+            var combined = new byte[4 + salt.Length + key.Length]; // 4 bytes for salt length
+            Buffer.BlockCopy(BitConverter.GetBytes(salt.Length), 0, combined, 0, 4);
+            Buffer.BlockCopy(salt, 0, combined, 4, salt.Length);
+            Buffer.BlockCopy(key, 0, combined, 4 + salt.Length, key.Length);
+            
+            return Convert.ToBase64String(combined);
+        }
+
+        /// <summary>
+        /// Decodes cached key with salt information
+        /// </summary>
+        private static CachedKeyInfo DecodeCachedKeyWithSalt(string cachedKeyWithSalt)
+        {
+            var combined = Convert.FromBase64String(cachedKeyWithSalt);
+            
+            if (combined.Length < 4)
+                throw new ArgumentException("Invalid cached key format", "cachedKeyWithSalt");
+            
+            int saltLength = BitConverter.ToInt32(combined, 0);
+            if (saltLength <= 0 || combined.Length < 4 + saltLength + 32) // 32 bytes for AES-256 key
+                throw new ArgumentException("Invalid cached key format", "cachedKeyWithSalt");
+            
+            var salt = new byte[saltLength];
+            var key = new byte[32]; // AES-256 key
+            
+            Buffer.BlockCopy(combined, 4, salt, 0, saltLength);
+            Buffer.BlockCopy(combined, 4 + saltLength, key, 0, 32);
+            
+            // Clear the combined array for security
+            Array.Clear(combined, 0, combined.Length);
+            
+            return new CachedKeyInfo { Key = key, Salt = salt };
+        }
+
+        #endregion
 
         /// <summary>
         /// Encrypts string using AES-GCM with password-based key derivation
