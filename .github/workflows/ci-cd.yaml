@@ -95,7 +95,7 @@ jobs:
         }
         
     - name: Create Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: |
           ${{ github.workspace }}\bin\Release\net481\win-x64\MS-SQL-Image_convert.dll
